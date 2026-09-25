@@ -9,7 +9,7 @@
 <body>
 <header class="topbar">
   <h1>字幕校稿对齐</h1>
-  <p class="subtitle">逐行对白稿 × SRT 全局单调对齐 · SRT 时间轴重定时（校准点分段线性映射）· SRT 断行排版（宽度约束下枚举最优断点）</p>
+  <p class="subtitle">逐行对白稿 × SRT 全局单调对齐 · SRT 时间轴重定时（校准点分段线性映射）· SRT 断行排版（宽度约束下枚举最优断点）· SRT 时间避让（最小最大平移量修整重叠）</p>
 </header>
 
 <main>
@@ -17,6 +17,7 @@
     <button type="button" id="tabAlign" class="tab active" data-tab="align">字幕校稿对齐</button>
     <button type="button" id="tabRetime" class="tab" data-tab="retime">SRT 时间轴重定时</button>
     <button type="button" id="tabRelayout" class="tab" data-tab="relayout">SRT 断行排版</button>
+    <button type="button" id="tabShift" class="tab" data-tab="shift">SRT 时间避让</button>
   </nav>
 
   <div id="viewAlign">
@@ -184,10 +185,70 @@
     </table>
   </section>
   </div><!-- /viewRelayout -->
+
+  <div id="viewShift" class="hidden">
+  <section class="input-grid">
+    <div class="pane">
+      <div class="pane-head">
+        <label for="shSrt">SRT 字幕（修整重叠或间隔过短的相邻块）</label>
+        <button type="button" class="ghost" id="shSample">填入示例</button>
+      </div>
+      <textarea id="shSrt" spellcheck="false"
+        placeholder="粘贴标准 SRT&#10;1&#10;00:00:01,000 --> 00:00:02,500&#10;你好，世界！"></textarea>
+    </div>
+    <div class="pane pane-help">
+      <div class="pane-head"><label>避让规则</label></div>
+      <ul class="rules">
+        <li>每块<b>时长、顺序与正文不变</b>，只允许整体平移。</li>
+        <li>相邻块「前块出点 → 后块入点」间隔不小于<b>最小块间隔</b>，重叠一并修整。</li>
+        <li>每块平移量不超过<b>单块最大平移量</b>，时间不得为负。</li>
+        <li>先求全段<b>最小的最大平移量</b>（不把冲突推给后面的块），平移量相同时各块入点尽量贴近原入点。</li>
+        <li>上限内不可行时指出<b>首个冲突块</b>并禁止导出。</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="controls">
+    <label class="gap-field">最小块间隔（毫秒）
+      <input type="number" id="shGap" value="200" min="0" max="60000" step="10">
+    </label>
+    <label class="gap-field">单块最大平移量（毫秒）
+      <input type="number" id="shMax" value="1000" min="0" max="3600000" step="50">
+    </label>
+    <button type="button" id="shRunBtn" class="primary">开始避让</button>
+    <button type="button" id="shClearBtn" class="ghost">清空</button>
+    <span id="shStatus" class="status" role="status"></span>
+  </section>
+
+  <section id="shSummary" class="summary hidden">
+    <span class="chip chip-match">字幕块 <b id="shCnt">0</b></span>
+    <span class="chip chip-shifted">已平移 <b id="shMoved">0</b></span>
+    <span class="chip">最大平移 <b id="shMaxApplied">0</b> ms</span>
+    <span class="chip">最小间隔 <b id="shGapShown">0</b> ms</span>
+    <span class="chip">平移上限 <b id="shMaxShown">0</b> ms</span>
+    <button type="button" id="shDownloadBtn" class="ghost">下载 SRT</button>
+  </section>
+
+  <section id="shResultWrap" class="result-wrap hidden">
+    <table id="shTable">
+      <thead>
+        <tr>
+          <th class="col-rt-idx">#</th>
+          <th class="col-tc">原时间码</th>
+          <th class="col-tc">新时间码</th>
+          <th class="col-shift">平移量</th>
+          <th>字幕文本</th>
+        </tr>
+      </thead>
+      <tbody id="shBody"></tbody>
+    </table>
+  </section>
+  </div><!-- /viewShift -->
 </main>
 
 <script src="/static/app.js"></script>
 <script src="/static/retime.js"></script>
 <script src="/static/relayout.js"></script>
+<script src="/static/shift.js"></script>
 </body>
 </html>

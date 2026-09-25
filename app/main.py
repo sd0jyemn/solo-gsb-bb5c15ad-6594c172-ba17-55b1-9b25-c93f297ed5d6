@@ -14,6 +14,7 @@ from .alignment import GAP_COST, align, align_with_anchors, normalize_anchors
 from .parsers import parse_script, parse_srt
 from .relayout import build_relayout_srt, relayout_subtitles
 from .retime import CalibPoint, build_srt, parse_timecode, retime_subtitles
+from .shift import build_shift_srt, shift_subtitles
 from .textnorm import normalize_text
 
 MAX_ITEMS = 2000          # 每侧条目数上限，防止 DP 规模过大导致请求过久
@@ -21,6 +22,8 @@ MAX_RAW_BYTES = 2 * 1024 * 1024
 MAX_POINTS = 500          # 重定时校准点数量上限
 MIN_LINE_WIDTH = 12       # 断行排版每行最大显示宽度下限
 MAX_LINE_WIDTH = 60       # 断行排版每行最大显示宽度上限
+MAX_GAP_MS = 60_000       # 时间避让最小块间隔上限（毫秒）
+MAX_SHIFT_MS = 3_600_000  # 时间避让单块最大平移量上限（毫秒）
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -353,6 +356,85 @@ def api_relayout_srt(req: RelayoutRequest):
         media_type="text/plain; charset=utf-8",
         headers={
             "Content-Disposition": 'attachment; filename="relayout.srt"'
+        },
+    )
+
+
+class ShiftRequest(BaseModel):
+    srt: str = Field(default="", description="原 SRT 字幕")
+    min_gap_ms: int = Field(
+        default=200,
+        ge=0,
+        le=MAX_GAP_MS,
+        description="相邻块最小间隔（毫秒，0~60000）",
+    )
+    max_shift_ms: int = Field(
+        default=1000,
+        ge=0,
+        le=MAX_SHIFT_MS,
+        description="单块最大平移量（毫秒，0~3600000）",
+    )
+
+
+def _build_shift_rows(srt_text: str, min_gap_ms: int, max_shift_ms: int):
+    if not 0 <= min_gap_ms <= MAX_GAP_MS:
+        raise HTTPException(400, f"最小块间隔须在 0~{MAX_GAP_MS} 毫秒之间")
+    if not 0 <= max_shift_ms <= MAX_SHIFT_MS:
+        raise HTTPException(400, f"单块最大平移量须在 0~{MAX_SHIFT_MS} 毫秒之间")
+    if len(srt_text.encode("utf-8", errors="ignore")) > MAX_RAW_BYTES:
+        raise HTTPException(400, "SRT 超过 2 MB 大小限制")
+    try:
+        subs = parse_srt(srt_text)
+    except ValueError as exc:
+        raise HTTPException(400, f"SRT 解析失败：{exc}") from exc
+    if not subs:
+        raise HTTPException(400, "SRT 内容为空，请粘贴字幕")
+    if len(subs) > MAX_ITEMS:
+        raise HTTPException(
+            400, f"字幕块数超过 {MAX_ITEMS} 的上限，请拆分后再避让"
+        )
+    try:
+        return shift_subtitles(subs, min_gap_ms, max_shift_ms)
+    except ValueError as exc:
+        raise HTTPException(400, f"时间避让失败：{exc}") from exc
+
+
+def _shift_row_json(r) -> dict:
+    return {
+        "index": r.index,
+        "old_start_tc": r.old_start_tc,
+        "old_end_tc": r.old_end_tc,
+        "new_start_tc": r.new_start_tc,
+        "new_end_tc": r.new_end_tc,
+        "shift_ms": r.shift_ms,
+        "text": r.text,
+    }
+
+
+@app.post("/api/shift")
+def api_shift(req: ShiftRequest):
+    rows = _build_shift_rows(req.srt, req.min_gap_ms, req.max_shift_ms)
+    return {
+        "summary": {
+            "total": len(rows),
+            "min_gap_ms": req.min_gap_ms,
+            "max_shift_ms": req.max_shift_ms,
+            "max_applied_shift_ms": max(abs(r.shift_ms) for r in rows),
+            "shifted": sum(1 for r in rows if r.shift_ms != 0),
+        },
+        "rows": [_shift_row_json(r) for r in rows],
+    }
+
+
+@app.post("/api/shift.srt")
+def api_shift_srt(req: ShiftRequest):
+    rows = _build_shift_rows(req.srt, req.min_gap_ms, req.max_shift_ms)
+    data = build_shift_srt(rows).encode("utf-8")
+    return Response(
+        content=data,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="shifted.srt"'
         },
     )
 

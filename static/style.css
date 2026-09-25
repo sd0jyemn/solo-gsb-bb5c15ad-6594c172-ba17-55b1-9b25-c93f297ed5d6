@@ -13,6 +13,8 @@
   --wrapped-border: #34a853;
   --manual-bg: #fdecea;
   --manual-border: #ea4335;
+  --shifted-bg: #eef4fe;
+  --shifted-border: #2563eb;
   --ink: #1f2933;
   --muted: #6b7280;
   --line: #d8dee4;
@@ -248,6 +250,13 @@ tr.row-manual td:first-child { border-left: 4px solid var(--manual-border); }
   color: #374151;
 }
 .pane-help .rules li { padding-left: 2px; }
+
+/* SRT 时间避让 */
+.chip-shifted { background: var(--shifted-bg); border-color: var(--shifted-border); }
+.col-shift { width: 90px; text-align: right; }
+tr.row-shifted { background: var(--shifted-bg); }
+tr.row-shifted td:first-child { border-left: 4px solid var(--shifted-border); }
+.cell-shift-active { color: var(--brand); font-weight: 600; }
 
 .hidden { display: none; }
 

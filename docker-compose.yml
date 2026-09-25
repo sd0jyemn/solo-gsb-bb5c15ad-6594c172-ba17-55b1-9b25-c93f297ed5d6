@@ -1,0 +1,9 @@
+services:
+  subtitle-align:
+    build: .
+    image: subtitle-align:latest
+    container_name: subtitle-align
+    ports:
+      # 宿主机端口:容器端口；如需改端口，修改冒号左侧即可
+      - "${APP_PORT:-8000}:8000"
+    restart: unless-stopped

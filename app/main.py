@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .alignment import GAP_COST, align, align_with_anchors, normalize_anchors
+from .avoid import avoid_subtitles, build_avoid_srt
 from .parsers import parse_script, parse_srt
 from .relayout import build_relayout_srt, relayout_subtitles
 from .retime import CalibPoint, build_srt, parse_timecode, retime_subtitles
@@ -21,6 +22,10 @@ MAX_RAW_BYTES = 2 * 1024 * 1024
 MAX_POINTS = 500          # 重定时校准点数量上限
 MIN_LINE_WIDTH = 12       # 断行排版每行最大显示宽度下限
 MAX_LINE_WIDTH = 60       # 断行排版每行最大显示宽度上限
+MIN_GAP_MS = 0            # 时间避让最小块间隔下限（毫秒）
+MAX_GAP_MS = 60_000       # 时间避让最小块间隔上限（毫秒）
+MIN_SHIFT_MS = 0          # 时间避让单块最大平移量下限（毫秒）
+MAX_SHIFT_MS = 3_600_000  # 时间避让单块最大平移量上限（毫秒）
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -353,6 +358,90 @@ def api_relayout_srt(req: RelayoutRequest):
         media_type="text/plain; charset=utf-8",
         headers={
             "Content-Disposition": 'attachment; filename="relayout.srt"'
+        },
+    )
+
+
+class AvoidRequest(BaseModel):
+    srt: str = Field(default="", description="原 SRT 字幕")
+    min_gap_ms: int = Field(
+        default=0,
+        ge=MIN_GAP_MS,
+        le=MAX_GAP_MS,
+        description="最小块间隔（毫秒，0~60000）：相邻块出点到下一块入点的最小距离",
+    )
+    max_shift_ms: int = Field(
+        default=2000,
+        ge=MIN_SHIFT_MS,
+        le=MAX_SHIFT_MS,
+        description="单块最大平移量（毫秒，0~3600000）：每块入点允许移动的最大绝对距离",
+    )
+
+
+def _build_avoid_rows(srt_text: str, min_gap_ms: int, max_shift_ms: int):
+    if not MIN_GAP_MS <= min_gap_ms <= MAX_GAP_MS:
+        raise HTTPException(
+            400, f"最小块间隔须在 {MIN_GAP_MS}~{MAX_GAP_MS} 毫秒之间"
+        )
+    if not MIN_SHIFT_MS <= max_shift_ms <= MAX_SHIFT_MS:
+        raise HTTPException(
+            400, f"单块最大平移量须在 {MIN_SHIFT_MS}~{MAX_SHIFT_MS} 毫秒之间"
+        )
+    if len(srt_text.encode("utf-8", errors="ignore")) > MAX_RAW_BYTES:
+        raise HTTPException(400, "SRT 超过 2 MB 大小限制")
+    try:
+        subs = parse_srt(srt_text)
+    except ValueError as exc:
+        raise HTTPException(400, f"SRT 解析失败：{exc}") from exc
+    if not subs:
+        raise HTTPException(400, "SRT 内容为空，请粘贴字幕")
+    if len(subs) > MAX_ITEMS:
+        raise HTTPException(
+            400, f"字幕块数超过 {MAX_ITEMS} 的上限，请拆分后再避让"
+        )
+    try:
+        return avoid_subtitles(subs, min_gap_ms, max_shift_ms)
+    except ValueError as exc:
+        raise HTTPException(400, f"时间避让失败：{exc}") from exc
+
+
+def _avoid_row_json(r) -> dict:
+    return {
+        "new_index": r.new_index,
+        "index": r.index,
+        "old_start_tc": r.old_start_tc,
+        "old_end_tc": r.old_end_tc,
+        "new_start_tc": r.new_start_tc,
+        "new_end_tc": r.new_end_tc,
+        "shift_ms": r.shift_ms,
+        "text": r.text,
+    }
+
+
+@app.post("/api/avoid")
+def api_avoid(req: AvoidRequest):
+    rows = _build_avoid_rows(req.srt, req.min_gap_ms, req.max_shift_ms)
+    return {
+        "summary": {
+            "total": len(rows),
+            "min_gap_ms": req.min_gap_ms,
+            "max_shift_ms": req.max_shift_ms,
+            "max_abs_shift_ms": max((abs(r.shift_ms) for r in rows), default=0),
+            "moved": sum(1 for r in rows if r.shift_ms != 0),
+        },
+        "rows": [_avoid_row_json(r) for r in rows],
+    }
+
+
+@app.post("/api/avoid.srt")
+def api_avoid_srt(req: AvoidRequest):
+    rows = _build_avoid_rows(req.srt, req.min_gap_ms, req.max_shift_ms)
+    data = build_avoid_srt(rows).encode("utf-8")
+    return Response(
+        content=data,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="avoid.srt"'
         },
     )
 

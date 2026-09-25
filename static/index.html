@@ -9,7 +9,7 @@
 <body>
 <header class="topbar">
   <h1>字幕校稿对齐</h1>
-  <p class="subtitle">逐行对白稿 × SRT 全局单调对齐 · SRT 时间轴重定时（校准点分段线性映射）· SRT 断行排版（宽度约束下枚举最优断点）</p>
+  <p class="subtitle">逐行对白稿 × SRT 全局单调对齐 · SRT 时间轴重定时（校准点分段线性映射）· SRT 断行排版（宽度约束下枚举最优断点）· SRT 时间避让（重叠/过近字幕整体平移修整）</p>
 </header>
 
 <main>
@@ -17,6 +17,7 @@
     <button type="button" id="tabAlign" class="tab active" data-tab="align">字幕校稿对齐</button>
     <button type="button" id="tabRetime" class="tab" data-tab="retime">SRT 时间轴重定时</button>
     <button type="button" id="tabRelayout" class="tab" data-tab="relayout">SRT 断行排版</button>
+    <button type="button" id="tabAvoid" class="tab" data-tab="avoid">SRT 时间避让</button>
   </nav>
 
   <div id="viewAlign">
@@ -184,10 +185,71 @@
     </table>
   </section>
   </div><!-- /viewRelayout -->
+
+  <div id="viewAvoid" class="hidden">
+  <section class="input-grid">
+    <div class="pane">
+      <div class="pane-head">
+        <label for="avSrt">SRT 字幕（重叠或间隔过短的相邻块将被整体平移修整）</label>
+        <button type="button" class="ghost" id="avSample">填入示例</button>
+      </div>
+      <textarea id="avSrt" spellcheck="false"
+        placeholder="粘贴标准 SRT&#10;1&#10;00:00:01,000 --> 00:00:03,000&#10;你好，世界！"></textarea>
+    </div>
+    <div class="pane pane-help">
+      <div class="pane-head"><label>避让规则</label></div>
+      <ul class="rules">
+        <li>每块<b>时长、顺序与正文不变</b>，仅整体平移入点/出点；新入点不为负。</li>
+        <li>修整后相邻块间隔（上块出点 → 下块入点）不小于<b>最小块间隔</b>。</li>
+        <li>每块平移量绝对值不超过<b>单块最大平移量</b>。</li>
+        <li>全段整体求解（非逐块贪心）：先让<b>最大平移量最小</b>，平移量相同时再让各块<b>按原入点就近</b>落位。</li>
+        <li>约束无法满足时指出<b>首个冲突块</b>并禁止导出。</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="controls">
+    <label class="gap-field">最小块间隔（毫秒）
+      <input type="number" id="avGap" value="0" min="0" max="60000" step="10">
+    </label>
+    <label class="gap-field">单块最大平移量（毫秒）
+      <input type="number" id="avShift" value="2000" min="0" max="3600000" step="100">
+    </label>
+    <button type="button" id="avRunBtn" class="primary">开始避让</button>
+    <button type="button" id="avClearBtn" class="ghost">清空</button>
+    <span id="avStatus" class="status" role="status"></span>
+  </section>
+
+  <section id="avSummary" class="summary hidden">
+    <span class="chip chip-match">字幕块 <b id="avCnt">0</b></span>
+    <span class="chip chip-shifted">已平移 <b id="avMoved">0</b></span>
+    <span class="chip">最大平移 <b id="avMaxShift">0</b> ms</span>
+    <span class="chip">最小块间隔 <b id="avGapShown">0</b> ms</span>
+    <span class="chip">平移上限 <b id="avLimit">0</b> ms</span>
+    <button type="button" id="avDownloadBtn" class="ghost">下载 SRT</button>
+  </section>
+
+  <section id="avResultWrap" class="result-wrap hidden">
+    <table id="avTable">
+      <thead>
+        <tr>
+          <th class="col-rt-idx">新#</th>
+          <th class="col-rt-idx">原#</th>
+          <th class="col-tc">原时间码</th>
+          <th class="col-tc">新时间码</th>
+          <th class="col-av-shift">平移量</th>
+          <th>字幕文本</th>
+        </tr>
+      </thead>
+      <tbody id="avBody"></tbody>
+    </table>
+  </section>
+  </div><!-- /viewAvoid -->
 </main>
 
 <script src="/static/app.js"></script>
 <script src="/static/retime.js"></script>
 <script src="/static/relayout.js"></script>
+<script src="/static/avoid.js"></script>
 </body>
 </html>

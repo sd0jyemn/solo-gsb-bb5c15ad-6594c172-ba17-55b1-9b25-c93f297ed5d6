@@ -249,6 +249,20 @@ tr.row-manual td:first-child { border-left: 4px solid var(--manual-border); }
 }
 .pane-help .rules li { padding-left: 2px; }
 
+/* SRT 时间避让 */
+.chip-shifted { background: var(--single-bg); border-color: var(--single-border); }
+.col-av-shift { width: 90px; text-align: right; }
+td.cell-shift {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.shift-pos { color: #b06000; font-weight: 600; }
+.shift-neg { color: var(--single-border); font-weight: 600; }
+.shift-zero { color: #b6bcc4; }
+tr.row-shifted { background: var(--single-bg); }
+tr.row-shifted td:first-child { border-left: 4px solid var(--single-border); }
+
 .hidden { display: none; }
 
 @media (max-width: 860px) {
